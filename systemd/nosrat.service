@@ -1,0 +1,39 @@
+[Unit]
+Description=nosrat (PDNC) GRE-over-IPsec tunnel manager (health/recovery daemon)
+Documentation=https://github.com/purixa/GREoverIPSEC
+# The tunnel needs basic network + strongSwan's IKE daemon running first.
+After=network-online.target strongswan.service
+Wants=network-online.target
+Requires=strongswan.service
+
+[Service]
+Type=simple
+# Brings the tunnel up (idempotent) before the daemon starts watching it.
+ExecStartPre=/usr/local/bin/nosrat start
+ExecStart=/usr/local/bin/nosrat run-daemon
+ExecStop=/usr/local/bin/nosrat stop
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+
+# --- security hardening -------------------------------------------------
+# nosrat needs CAP_NET_ADMIN (interfaces, routes, xfrm-adjacent ops via ip)
+# and CAP_NET_RAW (ping). It does NOT need full root beyond that.
+User=root
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/nosrat /etc/swanctl/conf.d /etc/sysctl.d
+PrivateTmp=true
+ProtectKernelModules=false
+ProtectKernelTunables=false
+
+# --- logging -------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nosrat
+
+[Install]
+WantedBy=multi-user.target

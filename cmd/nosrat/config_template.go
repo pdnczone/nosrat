@@ -1,0 +1,55 @@
+package main
+
+const starterConfig = `# nosrat tunnel configuration (PDNC)
+# Fill in local/remote public_ip, then: nosrat create && nosrat start
+
+tunnel:
+  name: nosrat
+
+local:
+  public_ip: ""            # this server's public IP
+  gre_ip: "10.200.0.1/30"
+
+remote:
+  public_ip: ""            # the other server's public IP
+  gre_ip: "10.200.0.2/30"
+
+ipsec:
+  ike_version: 2
+  mode: transport           # transport (recommended for GRE-over-IPsec) or tunnel
+  encryption: aes256gcm16   # AEAD cipher, no separate integrity alg needed
+  dh_group: 14              # MODP2048 minimum; 15/16 for higher security margin
+  psk_file: /etc/nosrat/secrets/psk
+  rekey_seconds: 3600
+  dpd_delay: 10
+  dpd_timeout: 30
+
+routing:
+  enabled: true
+  static_routes: []
+  # - to: 10.10.0.0/24
+  #   via_gre: true
+
+firewall:
+  enabled: true
+  allow_ssh: true
+
+mtu:
+  value: 1400
+  mss_clamp: true
+
+keepalive:
+  enabled: true
+  interval: 10
+
+health:
+  interval_seconds: 15
+  latency_threshold_ms: 200
+  loss_threshold_pct: 5
+  auto_recover: true
+
+failover:
+  enabled: false
+  secondary_public_ip: ""
+  switch_after_failures: 3
+`
