@@ -37,7 +37,7 @@ Server A ── GRE encapsulate ── IPsec (ESP, transport mode) ── Intern
 
 ```bash
 # One-line installer (interactive)
-curl -sL https://bit.ly/nosrat-install | sudo bash
+curl -sL https://raw.githubusercontent.com/pdnczone/nosrat/main/install.sh | sudo bash
 
 # Or manual install
 git clone https://github.com/pdnczone/nosrat.git
@@ -174,7 +174,7 @@ nosrat/
 
 ```bash
 # نصب با یک دستور (اینتراکتیو)
-curl -sL https://bit.ly/nosrat-install | sudo bash
+curl -sL https://raw.githubusercontent.com/pdnczone/nosrat/main/install.sh | sudo bash
 
 # یا نصب دستی
 git clone https://github.com/pdnczone/nosrat.git
