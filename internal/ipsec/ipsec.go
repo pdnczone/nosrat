@@ -11,8 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pdnczone/nosrat/internal/config"
 )
@@ -22,11 +22,28 @@ const (
 	secretsDir = "/etc/swanctl/conf.d"
 )
 
-// connName returns the strongSwan connection name for this tunnel. It is
-// intentionally just the tunnel name itself (e.g. "nosrat") - no extra
-// prefix - since that's already how the operator refers to it everywhere
-// else (interface name, swanctl file name, CLI messages).
+// connName returns the strongSwan connection name for this tunnel.
 func connName(c *config.Config) string { return c.TunnelName }
+
+// run executes an external command and returns output or error.
+func run(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// runWithTimeout executes a command with a timeout.
+func runWithTimeout(timeout time.Duration, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
 
 // WriteSwanctlConfig renders a swanctl connection file dedicated to this
 // tunnel (conf.d/<name>.conf), so multiple nosrat tunnels can coexist
@@ -39,8 +56,7 @@ func WriteSwanctlConfig(c *config.Config) error {
 	proposal := ikeProposal(c)
 	espProposal := espProposalFor(c)
 
-	// esp_proposals in transport mode still uses the same cipher suite; PFS
-	// is expressed by re-using a DH group in the ESP proposal too.
+	// Use placeholder for PSK - will be replaced after template rendering
 	tmpl := fmt.Sprintf(`# Managed by nosrat - DO NOT EDIT BY HAND
 # Regenerate with: nosrat create
 
@@ -102,6 +118,7 @@ secrets {
 		"__PSK_PLACEHOLDER__",
 	)
 
+	// Read PSK and replace placeholder
 	psk, err := c.ReadPSK()
 	if err != nil {
 		return fmt.Errorf("cannot render swanctl secrets: %w", err)
@@ -112,14 +129,11 @@ secrets {
 	if err := os.WriteFile(path, []byte(tmpl), 0600); err != nil {
 		return err
 	}
-	// secrets are embedded above with 0600 perms on the whole file, which is
-	// the strongSwan-recommended approach for swanctl.conf.d snippets.
+
 	return nil
 }
 
-// ikeProposal maps the requested cipher into a strongSwan IKE proposal
-// string. Only modern AEAD ciphers + DH>=14 are ever produced (config.go
-// already rejects anything weaker at load time; this is defense in depth).
+// ikeProposal maps the requested cipher into a strongSwan IKE proposal string.
 func ikeProposal(c *config.Config) string {
 	cipher := normalizeCipher(c.IPsec.Encryption)
 	return fmt.Sprintf("%s-prfsha384-modp%d", cipher, dhGroupNumberToModp(c.IPsec.DHGroup))
@@ -145,8 +159,6 @@ func normalizeCipher(enc string) string {
 }
 
 func dhGroupNumberToModp(dh int) int {
-	// strongSwan names MODP groups by their bit size, not the raw IKE
-	// transform number; group 14 == modp2048, 15 == modp3072, 16 == modp4096.
 	switch dh {
 	case 14:
 		return 2048
@@ -157,15 +169,6 @@ func dhGroupNumberToModp(dh int) int {
 	default:
 		return 2048
 	}
-}
-
-func run(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
 }
 
 // LoadAndInitiate pushes the generated config into the running strongSwan
@@ -186,16 +189,15 @@ func Terminate(c *config.Config) error {
 	return err
 }
 
-// Reload re-reads swanctl configs after a `nosrat create` config change,
-// without dropping unrelated tunnels managed by the same strongSwan daemon.
+// Reload re-reads swanctl configs after a `nosrat create` config change.
 func Reload(c *config.Config) error {
 	_, err := run("swanctl", "--load-all", "--noprompt")
 	return err
 }
 
 type SAStatus struct {
-	IKEState   string // ESTABLISHED, CONNECTING, DOWN
-	ESPState   string // INSTALLED, DOWN
+	IKEState   string
+	ESPState   string
 	Encryption string
 	PFSGroup   string
 }
@@ -207,10 +209,7 @@ var (
 	dhRe       = regexp.MustCompile(`MODP_\d+|CURVE_\d+`)
 )
 
-// Status parses `swanctl --list-sas` text output. We deliberately avoid a
-// vici client library (no external deps / no network for `go get`) and
-// instead parse the human-readable CLI output, which is stable enough for
-// status reporting purposes.
+// Status parses `swanctl --list-sas` text output.
 func Status(c *config.Config) SAStatus {
 	out, err := run("swanctl", "--list-sas", "--ike", connName(c))
 	if err != nil || strings.TrimSpace(out) == "" {
@@ -243,22 +242,14 @@ func EnsureRunning() error {
 	if err == nil && strings.TrimSpace(out) == "active" {
 		return nil
 	}
-	// Ubuntu 24.04 ships the swanctl-flavoured unit as strongswan.service
-	// (strongswan-starter is the legacy ipsec.conf variant).
 	_, err = run("systemctl", "start", "strongswan")
 	return err
 }
 
-// psk length sanity used by `nosrat init` when generating a new PSK.
+// ValidatePSKStrength checks if a PSK has sufficient entropy.
 func ValidatePSKStrength(psk string) error {
 	if len(psk) < 32 {
 		return fmt.Errorf("PSK too short (%d bytes) - need >=32 bytes of entropy", len(psk))
 	}
 	return nil
-}
-
-func init() {
-	// quiet the unused-import complaint on strconv if a build tag path
-	// doesn't use it (kept for future numeric parsing of vici output).
-	_ = strconv.Itoa
 }
