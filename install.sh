@@ -7,10 +7,7 @@
 # ║  ██║ ╚████║╚██████╔╝██║  ██║██║  ██║██║  ██║   ██║                      ║
 # ║  ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝                      ║
 # ╠═══════════════════════════════════════════════════════════════════════════╣
-# ║  🛡️  تونل امن GRE-over-IPsec برای لینوکس                            ║
-# ║  📺 YouTube: https://youtube.com/@PDNC30                                ║
-# ║  📢 Telegram: https://t.me/PDNCzone                                    ║
-# ║  💬 Support:  https://t.me/dncdirect                                   ║
+# ║  🛡️  GRE-over-IPsec Tunnel Manager — nosrat                            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 set -euo pipefail
 
@@ -53,51 +50,29 @@ warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 die()  { echo -e "${RED}[✗]${NC} $*\n" >&2; exit 1; }
 
 # ── Check root ─────────────────────────────────────────────────────────────
-[[ $EUID -eq 0 ]] || die "لطفاً با sudo اجرا کنید / Run as root (sudo ./install.sh)"
+[[ $EUID -eq 0 ]] || die "Run as root (sudo ./install.sh)"
 
 print_logo
 
-# ── Interactive wizard ────────────────────────────────────────────────────
-echo -e "${BOLD}🚀 Interactive Setup Wizard / جادویر نصب اینتراکتیو${NC}"
+# ── Welcome ───────────────────────────────────────────────────────────────
+echo -e "${BOLD}🚀 Welcome to the nosrat installer!${NC}"
 echo ""
-echo -e "  ${CYAN}Language / زبان:${NC}"
-echo "    1) English"
-echo "    2) فارسی"
+echo -e "This wizard will guide you through installing nosrat,"
+echo -e "a production-ready GRE-over-IPsec tunnel manager."
 echo ""
-read -p "Choose / انتخاب کنید [1-2]: " lang
-lang=${lang:-1}
 
-if [[ "$lang" == "2" ]]; then
-    MSG_WELCOME="به نصب‌کننده nosrat خوش آمدید!"
-    MSG_DEPS="در حال نصب وابستگی‌ها..."
-    MSG_BUILD="در حال ساختن باینری..."
-    MSG_CONFIG="در حال آماده‌سازی تنظیمات..."
-    MSG_FIREWALL="در حال پیکربندی فایروال..."
-    MSG_DONE="نصب با موفقیت انجام شد!"
-    MSG_CHECK_CONFIG="لطفاً فایل تنظیمات را ویرایش کنید:"
-    MSG_START_CMD="سپس دستور زیر را اجرا کنید:"
-else
-    MSG_WELCOME="Welcome to the nosrat installer!"
-    MSG_DEPS="Installing dependencies..."
-    MSG_BUILD="Building binary..."
-    MSG_CONFIG="Preparing configuration..."
-    MSG_FIREWALL="Configuring firewall..."
-    MSG_DONE="Installation complete!"
-    MSG_CHECK_CONFIG="Please edit the configuration file:"
-    MSG_START_CMD="Then run:"
-fi
-
+# ── Pause for user to read ─────────────────────────────────────────────────
+read -n 1 -s -r -p "Press any key to continue or Ctrl+C to abort..." </dev/tty
 echo ""
-echo -e "${BOLD}$MSG_WELCOME${NC}"
 echo ""
 
 # ── Step 1: Dependencies ──────────────────────────────────────────────────
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 1/6 — Dependencies / وابستگی‌ها${NC}"
+echo -e "${BOLD}Step 1/6 — Dependencies${NC}"
 echo ""
 
 if command -v apt-get &>/dev/null; then
-    log "$MSG_DEPS"
+    log "Installing dependencies (idempotent apt install)..."
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y --no-install-recommends \
@@ -111,7 +86,7 @@ fi
 # ── Step 2: strongSwan ────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 2/6 — strongSwan / تنظیمات IPsec${NC}"
+echo -e "${BOLD}Step 2/6 — strongSwan Configuration${NC}"
 echo ""
 
 systemctl enable strongswan >/dev/null 2>&1 || true
@@ -121,14 +96,14 @@ log "strongSwan configured ✅"
 # ── Step 3: Build binary ──────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 3/6 — Build / ساخت باینری${NC}"
+echo -e "${BOLD}Step 3/6 — Build nosrat Binary${NC}"
 echo ""
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NOSRAT_BIN=/usr/local/bin/nosrat
 
 if [[ -f "$SRC_DIR/cmd/nosrat/main.go" ]]; then
-    log "$MSG_BUILD"
+    log "Building nosrat binary..."
     ( cd "$SRC_DIR" && CGO_ENABLED=0 go build -o "$NOSRAT_BIN" ./cmd/nosrat )
     chmod 0755 "$NOSRAT_BIN"
     log "Binary installed: $NOSRAT_BIN ✅"
@@ -139,7 +114,7 @@ fi
 # ── Step 4: Config directory ──────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 4/6 — Configuration / پیکربندی${NC}"
+echo -e "${BOLD}Step 4/6 — Configuration${NC}"
 echo ""
 
 CONF_DIR=/etc/nosrat
@@ -150,7 +125,7 @@ log "Config directory ready: $CONF_DIR ✅"
 # ── Step 5: systemd ───────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 5/6 — systemd Service / سرویس سیستم‌دای${NC}"
+echo -e "${BOLD}Step 5/6 — systemd Service${NC}"
 echo ""
 
 SYSTEMD_UNIT=/etc/systemd/system/nosrat.service
@@ -166,7 +141,7 @@ fi
 # ── Step 6: Firewall ──────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}Step 6/6 — Firewall / فایروال${NC}"
+echo -e "${BOLD}Step 6/6 — Firewall${NC}"
 echo ""
 
 systemctl enable nftables >/dev/null 2>&1 || true
@@ -176,22 +151,26 @@ log "nftables ready (will be configured by 'nosrat start') ✅"
 # ── Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                        🎉 $MSG_DONE 🎉                         ║${NC}"
+echo -e "${GREEN}║                    🎉 Installation Complete! 🎉                        ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  $MSG_CHECK_CONFIG"
-echo -e "    ${CYAN}$CONF_DIR/tunnel.yaml${NC}"
+echo -e "  ${BOLD}Next steps:${NC}"
 echo ""
-echo -e "  $MSG_START_CMD"
-echo -e "    ${CYAN}systemctl start nosrat${NC}"
-echo -e "    ${CYAN}nosrat status${NC}"
-echo -e "    ${CYAN}nosrat diagnose${NC}"
+echo -e "  1. Edit the configuration:"
+echo -e "     ${CYAN}$CONF_DIR/tunnel.yaml${NC}"
+echo ""
+echo -e "  2. Start the tunnel:"
+echo -e "     ${CYAN}systemctl start nosrat${NC}"
+echo ""
+echo -e "  3. Check status:"
+echo -e "     ${CYAN}nosrat status${NC}"
+echo -e "     ${CYAN}nosrat diagnose${NC}"
 echo ""
 echo -e "  ${YELLOW}📺 YouTube:${NC}    https://youtube.com/@PDNC30"
 echo -e "  ${YELLOW}📢 Telegram:${NC}   https://t.me/PDNCzone"
 echo -e "  ${YELLOW}💬 Support:${NC}    https://t.me/dncdirect"
 echo -e "  ${YELLOW}🐙 GitHub:${NC}     https://github.com/pdnczone/nosrat"
 echo ""
-echo -e "  ${BOLD}Quick install command / دستور نصب سریع:${NC}"
+echo -e "  ${BOLD}Quick install command:${NC}"
 echo -e "    ${CYAN}curl -sL https://raw.githubusercontent.com/pdnczone/nosrat/main/install.sh | sudo bash${NC}"
 echo ""

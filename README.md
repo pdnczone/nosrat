@@ -7,16 +7,11 @@
 [![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-orange.svg)](https://ubuntu.com/)
 [![strongSwan](https://img.shields.io/badge/strongSwan-IKEv2-green.svg)](https://www.strongswan.org/)
 
-**[English](#english) | [فارسی](#فارسی)**
-
 📺 **[YouTube: @PDNC30](https://youtube.com/@PDNC30)** | 📢 **[Telegram: @PDNCzone](https://t.me/PDNCzone)** | 💬 **[Support](https://t.me/dncdirect)**
 
 </div>
 
 ---
-
-<a name="english"></a>
-## 🇬🇧 English
 
 A production-oriented tunnel manager for Ubuntu 24.04 LTS: builds a kernel GRE tunnel between two servers and protects it end-to-end with strongSwan (IKEv2 + ESP, IPsec **Transport Mode**). Ships as a single static Go binary (`nosrat`) plus a systemd service — no Docker, no external Go modules.
 
@@ -149,143 +144,6 @@ nosrat/
 | UDP 4500 | Always — IKE NAT-T detection |
 | ESP (IP proto 50) | When **no NAT** between servers |
 | GRE (IP proto 47) | Always — carries tunneled payload |
-
----
-
-<a name="فارسی"></a>
-## 🇮🇷 فارسی
-
-مدیر تونل امن برای اوبونتو ۲۴.۰۴: تونل GRE بین دو سرور با محافظت IPsec (strongSwan IKEv2 + ESP Transport Mode). یک باینری استاتیک Go (`nosrat`) + سرویس systemd — بدون داکر، بدون وابستگی خارجی.
-
-```
-اینترنت
-   │
-   ▼
-سرور A ── کپسوله GRE ── IPsec (ESP, transport mode) ── اینترنت ──▶
-                                                             رمزگشایی IPsec
-                                                                   │
-                                                               بازکردن GRE
-                                                                   │
-                                                                   ▼
-                                                                سرور B
-```
-
-### ⚡ نصب سریع
-
-```bash
-# نصب با یک دستور (اینتراکتیو)
-curl -sL https://raw.githubusercontent.com/pdnczone/nosrat/main/install.sh | sudo bash
-
-# یا نصب دستی
-git clone https://github.com/pdnczone/nosrat.git
-cd nosrat
-sudo ./install.sh
-```
-
-### 🏗️ معماری
-
-| جزء | فناوری | دلیل |
-|-----|--------|------|
-| **IPsec** | strongSwan + Linux XFRM | پیاده‌سازی IKEv2 بالغ و حسابرسی‌شده |
-| **تونل** | Kernel GRE با `ip tunnel` | سریع‌تر از فورواردینگ کاربررضا |
-| **رمزنگاری** | AES-256-GCM, MODP_2048 PFS | بدون اجازه downgrade ضعیف |
-| **فایروال** | nftables `inet nosrat` | جدا از قوانین موجود |
-| **سرویس** | systemd با auto-recovery | مدیریت پردازش تولیدی |
-
-### 📊 بودجه MTU
-
-```
-MTU اترنت/لینک                          1500
-  - هدر IPv4 خارجی                       -20
-  - هدر ESP (SPI+SeqNo) + IV (GCM)       -16
-  - تریلر ESP (pad+len+next) + ICV-16    -18
-  - هدر GRE (بدون key/seq/csum)          -4
-                                       ------
-MTU قابل استفاده تونل                  1442   → پیش‌فرض 1400 (حاشیه امنیتی)
-TCP MSS برای clamp                     1360   (روی MTU 1400)
-```
-
-### 🔒 مدل تهدید
-
-**پشتیبانی شده:**
-- ✅ استراق غیرفعال → محرمانگی AES-256-GCM
-- ✅ دستکاری / تزریق → یکپارچگی GCM + پنجره anti-replay XFRM
-- ✅ حملات replay → پنجره replay XFRM کرنل
-- ✅ افشای اعتبارنامه → PSK مجزا در فایل `0600` root-only
-- ✅ downgrade رمزنگاری ضعیف → رد DH < 14, non-AEAD/non-AES-256
-
-**خارج از محدوده:**
-- ❌ سیستم عامل میزبان (root = باخت)
-- ❌ DDoS حجمی علیه UDP 500
-- ❌ تحلیل ترافیک (متادایای زمان/اندازه)
-
-### 🚀 راه‌اندازی در ۵ مرحله
-
-```bash
-# ۱. کلون و نصب روی هر دو سرور
-git clone https://github.com/pdnczone/nosrat.git
-cd nosrat && sudo ./install.sh
-
-# ۲. کپی PSK از سرور A به سرور B
-# روی A: cat /etc/nosrat/secrets/psk
-# روی B: echo '<psk-from-A>' | sudo tee /etc/nosrat/secrets/psk
-
-# ۳. ویرایش تنظیمات روی هر سرور
-sudo nano /etc/nosrat/tunnel.yaml
-
-# ۴. شروع تونل (هر دو سرور)
-sudo systemctl start nosrat
-
-# ۵. بررسی
-nosrat status
-nosrat diagnose
-```
-
-### 📋 مرجع CLI
-
-```bash
-nosrat init          # ایجاد /etc/nosrat، تولید PSK، نوشتن تنظیمات اولیه
-nosrat create        # ساخت (مجدد) GRE + اتصال strongSwan
-nosrat start         # بالا آوردن تونل: GRE + IPsec SA + مسیرها + فایروال
-nosrat stop          # پایین آوردن IPsec SA، GRE
-nosrat restart       # راه‌اندازی مجدد تونل
-nosrat status        # خلاصه خوانا برای انسان
-nosrat health        # یک پاس بررسی سلامت
-nosrat routes        # مسیرهای نصب‌شده روی رابط GRE
-nosrat ipsec         # جزئیات `swanctl --list-sas`
-nosrat logs          # journalctl برای nosrat + strongswan
-nosrat diagnose      # چک‌لیست کامل با دستورهای رفع مشکل
-nosrat uninstall     # حذف GRE/IPsec/فایروال (نگه‌داشتن تنظیمات)
-```
-
-### 📁 ساختار پروژه
-
-```
-nosrat/
-├── cmd/nosrat/            # ورودی CLI + قالب تنظیمات اولیه
-├── internal/config/       # بارگذاری/اعتبارسنجی تنظیمات + پارسر YAML کوچک
-├── internal/gre/          # چرخه حیات رابط GRE کرنل (از طریق `ip`)
-├── internal/ipsec/        # تولید تنظیمات swanctl + کنترل strongSwan
-├── internal/routing/      # sysctl (forward/rp_filter) + مسیرهای استاتیک
-├── internal/firewall/     # جدول nftables `inet nosrat` (پورت‌ها + MSS clamp)
-├── internal/health/       # بررسی‌های ICMP/SA/رابط + بازیابی خودکار
-├── internal/diagnostics/  # چک‌لیست `nosrat diagnose`
-├── configs/               # نمونه tunnel.yaml
-├── systemd/nosrat.service
-├── scripts/               # benchmark.sh, mtu-calc.sh
-├── tests/test-plan.md
-├── install.sh / uninstall.sh
-└── go.mod
-```
-
-### 🔥 نیازمندی‌های فایروال
-
-| پروتکل/پورت | چه زمانی نیاز است |
-|---|---|
-| UDP 500 | همیشه — مذاکره اولیه IKE_SA |
-| UDP 4500 | همیشه — تشخیص IKE NAT-T |
-| ESP (IP proto 50) | وقتی **بدون NAT** بین سرورها هستید |
-| GRE (IP proto 47) | همیشه — حمل بار تونل‌شده |
 
 ---
 
