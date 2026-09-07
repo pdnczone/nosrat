@@ -1,6 +1,6 @@
 [Unit]
 Description=nosrat (PDNC) GRE-over-IPsec tunnel manager (health/recovery daemon)
-Documentation=https://github.com/purixa/GREoverIPSEC
+Documentation=https://github.com/pdnczone/nosrat
 # The tunnel needs basic network + strongSwan's IKE daemon running first.
 After=network-online.target strongswan.service
 Wants=network-online.target

@@ -15,7 +15,39 @@ import (
 	"github.com/pdnczone/nosrat/internal/ipsec"
 )
 
+// TunnelState represents the overall health state of the tunnel.
+type TunnelState int
+
+const (
+	StateDown TunnelState = iota
+	StateStarting
+	StateDegraded
+	StateUp
+	StateFailing
+	StateRecovering
+)
+
+func (s TunnelState) String() string {
+	switch s {
+	case StateDown:
+		return "DOWN"
+	case StateStarting:
+		return "STARTING"
+	case StateDegraded:
+		return "DEGRADED"
+	case StateUp:
+		return "UP"
+	case StateFailing:
+		return "FAILING"
+	case StateRecovering:
+		return "RECOVERING"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type Report struct {
+	State      TunnelState
 	GREUp      bool
 	IKEState   string
 	ESPState   string
@@ -30,12 +62,10 @@ var (
 	rttAvgRe = regexp.MustCompile(`= [\d.]+/([\d.]+)/`)
 )
 
-// pingGREPeer sends a small burst of ICMP echoes to the remote GRE address
-// (i.e. through the tunnel, not the public IP) so a healthy result proves
-// GRE + IPsec end-to-end, not just that the peer's WAN is up.
+// pingGREPeer sends a small burst of ICMP echoes to the remote GRE address.
 func pingGREPeer(target string, count int, timeoutSec int) (lossPct, avgMs float64, err error) {
 	cmd := exec.Command("ping", "-c", strconv.Itoa(count), "-w", strconv.Itoa(timeoutSec), target)
-	out, _ := cmd.CombinedOutput() // ping exits non-zero on packet loss; that's expected input, not a Go error
+	out, _ := cmd.CombinedOutput()
 	text := string(out)
 
 	if m := lossRe.FindStringSubmatch(text); m != nil {
@@ -51,7 +81,7 @@ func pingGREPeer(target string, count int, timeoutSec int) (lossPct, avgMs float
 
 // Check runs one full health pass.
 func Check(c *config.Config) Report {
-	r := Report{}
+	r := Report{State: StateDown}
 
 	st, _ := gre.Status(c.TunnelName)
 	r.GREUp = st.Exists && st.OperState == "UP"
@@ -87,21 +117,29 @@ func Check(c *config.Config) Report {
 	}
 
 	r.Healthy = len(r.Reasons) == 0
+
+	// Determine state
+	switch {
+	case r.Healthy:
+		r.State = StateUp
+	case !r.GREUp:
+		r.State = StateDown
+	case sa.IKEState != "ESTABLISHED" || sa.ESPState != "INSTALLED":
+		r.State = StateDegraded
+	default:
+		r.State = StateDegraded
+	}
+
 	return r
 }
 
-// Recover attempts to bring an unhealthy tunnel back without a reboot:
-//  1. re-assert the GRE link (idempotent 'ip link set up')
-//  2. ask strongSwan to re-initiate the IKE/ESP SA (DPD's restart action
-//     usually already does this; this is the belt-and-braces path nosrat
-//     drives itself so recovery does not depend solely on strongSwan timers)
+// Recover attempts to bring an unhealthy tunnel back without a reboot.
 func Recover(c *config.Config) error {
 	if err := gre.Up(c.TunnelName); err != nil {
 		return fmt.Errorf("recover: bringing GRE up: %w", err)
 	}
 	if err := ipsec.Terminate(c); err != nil {
 		// non-fatal: SA may already be down
-		_ = err
 	}
 	if err := ipsec.LoadAndInitiate(c); err != nil {
 		return fmt.Errorf("recover: re-initiating IPsec SA: %w", err)
@@ -109,11 +147,11 @@ func Recover(c *config.Config) error {
 	return nil
 }
 
-// RunLoop runs Check/Recover on the configured interval until stop is
-// closed. Intended to be launched from the systemd service's main loop.
+// RunLoop runs Check/Recover on the configured interval until stop is closed.
 func RunLoop(c *config.Config, stop <-chan struct{}, onReport func(Report)) {
 	ticker := time.NewTicker(time.Duration(c.Health.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-stop:
