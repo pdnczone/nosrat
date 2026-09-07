@@ -79,48 +79,25 @@ elif command -v dnf &>/dev/null; then
 fi
 log "Dependencies installed"
 
-# ── Download nosrat binary from GitHub ───────────────────────────────────
-log "Downloading nosrat binary from GitHub..."
-ARCH="$(uname -m)"
-case "$ARCH" in
-    x86_64)  GOARCH="amd64" ;;
-    aarch64) GOARCH="arm64" ;;
-    armv7l)  GOARCH="armv7" ;;
-    *)
-        die "Unsupported architecture: $ARCH (supported: amd64, arm64, armv7)"
-        ;;
-esac
+# ── Download interactive nosrat script from GitHub ───────────────────────
+log "Downloading nosrat interactive menu from GitHub..."
+TMP_SCRIPT="$(mktemp /tmp/nosrat.XXXXXX)"
+DOWNLOAD_URL="https://raw.githubusercontent.com/pdnczone/nosrat/main/cmd/nosrat/nosrat.sh"
 
-# Download the latest release from GitHub
-DOWNLOAD_URL="https://github.com/pdnczone/nosrat/releases/latest/download/nosrat-linux-${GOARCH}"
-TMP_BIN="$(mktemp /tmp/nosrat.XXXXXX)"
-
-if ! curl -fsSL -o "$TMP_BIN" "$DOWNLOAD_URL" 2>/dev/null; then
-    # Fallback: if no release binary exists yet, try to build from source
-    warn "Pre-built binary not available for ${GOARCH}, building from source..."
-    
-    if ! command -v go &>/dev/null; then
-        apt-get install -y --no-install-recommends golang-go 2>&1 | tail -2 || \
-            die "Go is required to build from source. Install golang-go manually."
+if ! curl -fsSL -o "$TMP_SCRIPT" "$DOWNLOAD_URL" 2>/dev/null; then
+    # Fallback: try to build from local source if we're running from a clone
+    if [[ -f "./cmd/nosrat/nosrat.sh" ]]; then
+        warn "Download failed, using local copy"
+        cp "./cmd/nosrat/nosrat.sh" "$TMP_SCRIPT"
+    else
+        die "Could not download nosrat script from $DOWNLOAD_URL"
     fi
-    
-    # Clone to a temp directory to avoid issues with piped script
-    TMP_SRC="$(mktemp -d /tmp/nosrat-src.XXXXXX)"
-    log "Cloning repository..."
-    if ! git clone --depth 1 https://github.com/pdnczone/nosrat.git "$TMP_SRC" 2>&1 | tail -3; then
-        die "Failed to clone repository"
-    fi
-    
-    log "Building nosrat binary..."
-    ( cd "$TMP_SRC" && CGO_ENABLED=0 go build -o "$TMP_BIN" ./cmd/nosrat/main.go 2>&1 ) || \
-        die "Build failed"
-    
-    rm -rf "$TMP_SRC"
 fi
 
-install -m 0755 "$TMP_BIN" /usr/local/bin/nosrat
-rm -f "$TMP_BIN"
-log "Binary installed at /usr/local/bin/nosrat"
+chmod 0755 "$TMP_SCRIPT"
+install -m 0755 "$TMP_SCRIPT" /usr/local/bin/nosrat
+rm -f "$TMP_SCRIPT"
+log "nosrat command installed at /usr/local/bin/nosrat"
 
 # ── Prepare config directory ──────────────────────────────────────────────
 log "Preparing configuration..."
