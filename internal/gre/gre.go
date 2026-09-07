@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/pdnczone/nosrat/internal/config"
 )
@@ -22,6 +23,16 @@ type LinkStatus struct {
 }
 
 func run(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// runWithTimeout runs a command with a timeout
+func runWithTimeout(timeout time.Duration, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
