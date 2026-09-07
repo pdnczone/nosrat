@@ -81,12 +81,13 @@ print_create_menu() {
     echo -e "${BOLD}║              🚀 CREATE TUNNEL                             ║${NC}"
     echo -e "${BOLD}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "  ${CYAN}1)${NC} 🇮🇷 Iran Server"
-    echo -e "  ${CYAN}2)${NC} 🌍 External Server"
+    echo -e "  ${CYAN}1)${NC} 🇮🇷 GRE-over-IPsec — Iran Server"
+    echo -e "  ${CYAN}2)${NC} 🌍 GRE-over-IPsec — External Server"
+    echo -e "  ${CYAN}3)${NC} 👻 Ghost Tunnel (WireGuard + Cloak + Nginx)"
     echo ""
     echo -e "  ${YELLOW}0)${NC} Back to Main Menu"
     echo ""
-    echo -ne "${BOLD}Choose [0-2]: ${NC}"
+    echo -ne "${BOLD}Choose [0-3]: ${NC}"
 }
 
 # ── Manage Menu ───────────────────────────────────────────────────────────
@@ -458,7 +459,190 @@ EOF
     echo -e "    ${CYAN}sudo nano /etc/nosrat/tunnel.yaml${NC}"
     echo -e "    Change ${BOLD}IRAN_SERVER_IP${NC} to your actual Iran server IP"
     echo ""
-    
+
+    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+# ── GhostTunnel — interactive wizard ───────────────────────────────────────
+# Asks the user for domain/users/DNS/redirect/path-rotation, writes the
+# GhostTunnel config to /etc/ghosttunnel/config.sh, then stages the
+# installer in /tmp and runs it. All deps are installed by the Ghost
+# installer itself — nosrat never pulls wireguard/nginx/cloak.
+create_ghost_tunnel() {
+    echo ""
+    echo -e "${BOLD}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║         👻 GHOST TUNNEL (WireGuard + Cloak + Nginx)        ║${NC}"
+    echo -e "${BOLD}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}GhostTunnel runs WireGuard (51820) inside Cloak (443) behind${NC}"
+    echo -e "${YELLOW}Nginx, which rotates the URL path periodically for obfuscation.${NC}"
+    echo ""
+
+    # ── Domain question ──
+    local use_domain=""
+    while true; do
+        read -p "Do you have a custom domain pointing at this server? (y/N) " use_domain
+        case "$use_domain" in
+            [Yy]|[Yy][Ee][Ss]) use_domain="y"; break ;;
+            [Nn]|[Nn][Oo]|"") use_domain="n"; break ;;
+            *) err "Please answer y or N" ;;
+        esac
+    done
+
+    local domain_name="" email=""
+    if [[ "$use_domain" == "y" ]]; then
+        while [[ -z "$domain_name" ]]; do
+            read -p "Enter your domain (e.g. vpn.example.com): " domain_name
+        done
+        read -p "Email for Let's Encrypt SSL notices (leave empty to skip): " email
+    else
+        echo -e "${CYAN}No domain — the server's public IP will be used as the endpoint.${NC}"
+    fi
+
+    # ── Number of users ──
+    local vpn_users=""
+    while [[ -z "$vpn_users" ]]; do
+        read -p "Number of VPN users to create [1-50, default 3]: " vpn_users
+        vpn_users="${vpn_users:-3}"
+        if ! [[ "$vpn_users" =~ ^[0-9]+$ ]] || (( vpn_users < 1 )) || (( vpn_users > 50 )); then
+            err "Please enter a number between 1 and 50"
+            vpn_users=""
+        fi
+    done
+
+    # ── DNS server for clients ──
+    local dns_server=""
+    while [[ -z "$dns_server" ]]; do
+        read -p "DNS server for VPN clients [default 1.1.1.1]: " dns_server
+        dns_server="${dns_server:-1.1.1.1}"
+        if ! [[ "$dns_server" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            err "Invalid IPv4 address"
+            dns_server=""
+        fi
+    done
+
+    # ── Cloak redirect URL ──
+    local cloak_redir=""
+    while [[ -z "$cloak_redir" ]]; do
+        read -p "Cloak redirect URL (for non-VPN probes) [default www.bing.com]: " cloak_redir
+        cloak_redir="${cloak_redir:-www.bing.com}"
+    done
+
+    # ── Path rotation interval ──
+    local path_rotation=""
+    while [[ -z "$path_rotation" ]]; do
+        read -p "Path rotation interval in hours [default 6]: " path_rotation
+        path_rotation="${path_rotation:-6}"
+        if ! [[ "$path_rotation" =~ ^[0-9]+$ ]] || (( path_rotation < 1 )); then
+            err "Please enter a positive integer"
+            path_rotation=""
+        fi
+    done
+
+    # ── Summary ──
+    echo ""
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}📋 GhostTunnel Configuration Summary${NC}"
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${CYAN}Domain:              ${NC}${domain_name:-(none — will use public IP)}"
+    echo -e "  ${CYAN}SSL email:           ${NC}${email:-(skip)}"
+    echo -e "  ${CYAN}VPN users:           ${NC}${vpn_users}"
+    echo -e "  ${CYAN}Client DNS:          ${NC}${dns_server}"
+    echo -e "  ${CYAN}Cloak redirect:      ${NC}${cloak_redir}"
+    echo -e "  ${CYAN}Path rotation (h):   ${NC}${path_rotation}"
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    read -p "Proceed with installation? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        warn "Cancelled"
+        sleep 1
+        return
+    fi
+
+    # ── Write /etc/ghosttunnel/config.sh ──
+    local conf_dir="/etc/ghosttunnel"
+    mkdir -p "$conf_dir"
+    chmod 0755 "$conf_dir"
+
+    cat > "$conf_dir/config.sh" <<EOF
+#!/bin/bash
+# GhostTunnel configuration — written by nosrat
+# Edit values and rerun the installer to re-apply.
+
+# Number of VPN users to create
+VPN_USERS=${vpn_users}
+
+# URL to redirect unauthorized (non-VPN) probes to
+CLOAK_REDIR="${cloak_redir}"
+
+# DNS server advertised to VPN clients
+DNS_SERVER="${dns_server}"
+
+# Path rotation interval in hours
+PATH_ROTATION_INTERVAL=${path_rotation}
+EOF
+    chmod 0644 "$conf_dir/config.sh"
+    log "Config written to $conf_dir/config.sh"
+
+    # ── Stage installer scripts in /tmp ──
+    local stage="/tmp/ghosttunnel-install"
+    rm -rf "$stage"
+    mkdir -p "$stage/scripts"
+
+    local src_root="/root/nosrat/ghost"
+    if [[ ! -f "$src_root/install.sh" ]]; then
+        # Fallback: try relative to this script (when installed)
+        local script_dir
+        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || echo "")"
+        if [[ -n "$script_dir" && -f "$script_dir/../../ghost/install.sh" ]]; then
+            src_root="$(cd "$script_dir/../../ghost" && pwd)"
+        else
+            die "Cannot locate GhostTunnel sources (looked in $src_root)"
+        fi
+    fi
+
+    cp "$src_root/install.sh"            "$stage/install.sh"
+    cp "$src_root/scripts/"*.sh          "$stage/scripts/"
+    chmod +x "$stage/install.sh" "$stage/scripts/"*.sh
+    log "Installer staged at $stage"
+
+    # ── Run installer ──
+    echo ""
+    warn "About to install: wireguard, nginx, certbot, cloak and friends."
+    warn "This may take several minutes. Please be patient."
+    echo ""
+
+    if ! (cd "$stage" && bash ./install.sh); then
+        err "GhostTunnel installer failed — see messages above."
+        echo ""
+        echo -e "${YELLOW}You can re-run manually after fixing the issue:${NC}"
+        echo -e "    ${CYAN}cd $stage && sudo bash ./install.sh${NC}"
+        echo ""
+        read -n 1 -s -r -p "Press any key to continue..."
+        return 1
+    fi
+
+    # ── Post-install summary ──
+    local current_path
+    current_path="$(cat /var/www/html/current-path 2>/dev/null || echo 'N/A')"
+    local server_name="${domain_name:-$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo 'this-server')}"
+
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║         ✅  GHOST TUNNEL INSTALLED                         ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${CYAN}Connection address:${NC}  ${BOLD}${server_name}${NC}"
+    echo -e "  ${CYAN}Cloak port:        ${NC} ${BOLD}443${NC}"
+    echo -e "  ${CYAN}Current VPN path:  ${NC} ${BOLD}${current_path}${NC}"
+    echo -e "  ${CYAN}Client configs:    ${NC} /etc/wireguard/clients/"
+    echo -e "  ${CYAN}QR codes (PNG):    ${NC} /etc/wireguard/clients/"
+    echo ""
+    echo -e "  ${YELLOW}Rotate VPN path now:${NC}  sudo /usr/local/bin/rotate-path.sh"
+    echo -e "  ${YELLOW}Service status:    ${NC}  systemctl status cloak wg-quick@wg0 nginx"
+    echo ""
+
     read -n 1 -s -r -p "Press any key to continue..."
 }
 
@@ -886,7 +1070,7 @@ do_create_tunnel() {
     while true; do
         print_create_menu
         read -r choice
-        
+
         case "$choice" in
             1)
                 create_iran_server
@@ -894,6 +1078,10 @@ do_create_tunnel() {
                 ;;
             2)
                 create_external_server
+                return
+                ;;
+            3)
+                create_ghost_tunnel
                 return
                 ;;
             0)
