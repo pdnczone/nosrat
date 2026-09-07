@@ -41,14 +41,14 @@ func (s State) String() string {
 
 // Engine manages the failover state machine
 type Engine struct {
-	mu              sync.Mutex
-	state           State
-	failCount       int
-	lastFailover    time.Time
-	cooldown        time.Duration
-	primaryCfg      *config.Config
-	secondaryIP     string
-	recovered       bool
+	mu           sync.Mutex
+	state        State
+	failCount    int
+	lastFailover time.Time
+	cooldown     time.Duration
+	primaryCfg   *config.Config
+	secondaryIP  string
+	recovered    bool
 }
 
 // NewEngine creates a new failover engine

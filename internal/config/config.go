@@ -12,7 +12,7 @@ import (
 
 // StaticRoute is a single routing entry pushed over the tunnel.
 type StaticRoute struct {
-	To     string `yaml:"to"`     // CIDR, e.g. "10.10.0.0/24"
+	To     string `yaml:"to"`      // CIDR, e.g. "10.10.0.0/24"
 	ViaGRE bool   `yaml:"via_gre"` // if true, next-hop is the GRE peer address
 }
 
@@ -23,9 +23,9 @@ type Endpoint struct {
 
 type IPsecConfig struct {
 	IKEVersion   int    `yaml:"ike_version"`
-	Mode         string `yaml:"mode"` // "transport" (default) or "tunnel"
+	Mode         string `yaml:"mode"`       // "transport" (default) or "tunnel"
 	Encryption   string `yaml:"encryption"` // e.g. aes256gcm16
-	Integrity    string `yaml:"integrity"` // only used for non-AEAD ciphers
+	Integrity    string `yaml:"integrity"`  // only used for non-AEAD ciphers
 	DHGroup      int    `yaml:"dh_group"`
 	PSKFile      string `yaml:"psk_file"`
 	RekeySeconds int    `yaml:"rekey_seconds"`
