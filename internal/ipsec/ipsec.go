@@ -237,13 +237,25 @@ func Status(c *config.Config) SAStatus {
 }
 
 // EnsureRunning starts the strongSwan systemd unit if it's not already active.
+// The unit is named "strongswan" on RHEL/Alpine and "strongswan-starter" on
+// Debian/Ubuntu, so try both.
 func EnsureRunning() error {
-	out, err := run("systemctl", "is-active", "strongswan")
-	if err == nil && strings.TrimSpace(out) == "active" {
-		return nil
+	for _, unit := range []string{"strongswan", "strongswan-starter"} {
+		out, err := run("systemctl", "is-active", unit)
+		if err == nil && strings.TrimSpace(out) == "active" {
+			return nil
+		}
 	}
-	_, err = run("systemctl", "start", "strongswan")
-	return err
+	// Not active (or unit missing) — start whichever unit exists.
+	var lastErr error
+	for _, unit := range []string{"strongswan", "strongswan-starter"} {
+		if _, err := run("systemctl", "start", unit); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // ValidatePSKStrength checks if a PSK has sufficient entropy.

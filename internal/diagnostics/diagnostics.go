@@ -52,11 +52,19 @@ func RunAll(c *config.Config) []CheckResult {
 		results = append(results, CheckResult{"XFRM", false, out, "ensure kernel has XFRM support (CONFIG_XFRM); should be default on Ubuntu 24.04 kernels"})
 	}
 
-	// 4. strongSwan installed & running
-	if out, err := run("systemctl", "is-active", "strongswan"); err == nil && strings.TrimSpace(out) == "active" {
-		results = append(results, CheckResult{"strongSwan", true, "strongswan.service active", ""})
+	// 4. strongSwan installed & running (unit is "strongswan" on RHEL/Alpine,
+	// "strongswan-starter" on Debian/Ubuntu).
+	swActive := false
+	for _, unit := range []string{"strongswan", "strongswan-starter"} {
+		if out, err := run("systemctl", "is-active", unit); err == nil && strings.TrimSpace(out) == "active" {
+			swActive = true
+			break
+		}
+	}
+	if swActive {
+		results = append(results, CheckResult{"strongSwan", true, "strongSwan active", ""})
 	} else {
-		results = append(results, CheckResult{"strongSwan", false, strings.TrimSpace(out), "systemctl start strongswan"})
+		results = append(results, CheckResult{"strongSwan", false, "not active", "systemctl start strongswan (or strongswan-starter)"})
 	}
 
 	// 5. IKE state

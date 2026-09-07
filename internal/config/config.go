@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -678,15 +679,15 @@ func getBoolNested(m map[string]any, key string, def bool) bool {
 }
 
 func parseInt(s string) (int, error) {
-	var i int
-	_, err := fmt.Sscanf(s, "%d", &i)
-	return i, err
+	// strconv.Atoi requires the ENTIRE string to be a valid integer —
+	// fmt.Sscanf would silently truncate "127.0.0.2" to 127.
+	return strconv.Atoi(s)
 }
 
 func parseFloat(s string) (float64, error) {
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	return f, err
+	// strconv.ParseFloat requires the entire string to be a valid float —
+	// fmt.Sscanf would silently truncate "10.200.0.1/30" to 10.2.
+	return strconv.ParseFloat(s, 64)
 }
 
 func strconvParseBool(s string) (bool, error) {
