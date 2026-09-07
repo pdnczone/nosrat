@@ -1,3 +1,3 @@
-module github.com/pdnc/grectl
+module github.com/pdnczone/nosrat
 
 go 1.22

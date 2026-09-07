@@ -15,13 +15,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pdnc/grectl/internal/config"
-	"github.com/pdnc/grectl/internal/diagnostics"
-	"github.com/pdnc/grectl/internal/firewall"
-	"github.com/pdnc/grectl/internal/gre"
-	"github.com/pdnc/grectl/internal/health"
-	"github.com/pdnc/grectl/internal/ipsec"
-	"github.com/pdnc/grectl/internal/routing"
+	"github.com/pdnczone/nosrat/internal/config"
+	"github.com/pdnczone/nosrat/internal/diagnostics"
+	"github.com/pdnczone/nosrat/internal/firewall"
+	"github.com/pdnczone/nosrat/internal/gre"
+	"github.com/pdnczone/nosrat/internal/health"
+	"github.com/pdnczone/nosrat/internal/ipsec"
+	"github.com/pdnczone/nosrat/internal/routing"
 )
 
 const (

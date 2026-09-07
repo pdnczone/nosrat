@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pdnc/grectl/internal/config"
-	"github.com/pdnc/grectl/internal/gre"
-	"github.com/pdnc/grectl/internal/ipsec"
+	"github.com/pdnczone/nosrat/internal/config"
+	"github.com/pdnczone/nosrat/internal/gre"
+	"github.com/pdnczone/nosrat/internal/ipsec"
 )
 
 type Report struct {

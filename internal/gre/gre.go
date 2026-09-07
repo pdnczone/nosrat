@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/pdnc/grectl/internal/config"
+	"github.com/pdnczone/nosrat/internal/config"
 )
 
 type LinkStatus struct {
