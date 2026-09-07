@@ -1,24 +1,28 @@
-package main
+package config
 
-const starterConfig = `# nosrat tunnel configuration (PDNC)
-# Fill in local/remote public_ip, then: nosrat create && nosrat start
+// GetDefaultStarterConfig returns the default starter configuration content.
+func GetDefaultStarterConfig() string {
+	return `# nosrat starter configuration
+# Edit the values below for your tunnel endpoints, then run:
+#   nosrat create && nosrat start
 
 tunnel:
   name: nosrat
 
 local:
-  public_ip: ""            # this server's public IP
+  public_ip: ""
   gre_ip: "10.200.0.1/30"
 
 remote:
-  public_ip: ""            # the other server's public IP
+  public_ip: ""
   gre_ip: "10.200.0.2/30"
 
 ipsec:
   ike_version: 2
-  mode: transport           # transport (recommended for GRE-over-IPsec) or tunnel
-  encryption: aes256gcm16   # AEAD cipher, no separate integrity alg needed
-  dh_group: 14              # MODP2048 minimum; 15/16 for higher security margin
+  mode: transport
+  encryption: aes256gcm16
+  integrity: ""
+  dh_group: 14
   psk_file: /etc/nosrat/secrets/psk
   rekey_seconds: 3600
   dpd_delay: 10
@@ -27,8 +31,6 @@ ipsec:
 routing:
   enabled: true
   static_routes: []
-  # - to: 10.10.0.0/24
-  #   via_gre: true
 
 firewall:
   enabled: true
@@ -53,3 +55,4 @@ failover:
   secondary_public_ip: ""
   switch_after_failures: 3
 `
+}

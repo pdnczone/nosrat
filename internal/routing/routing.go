@@ -52,10 +52,8 @@ func persistSysctl(key, value string) error {
 }
 
 // Enable turns on the kernel settings a GRE-over-IPsec forwarder needs:
-//   - net.ipv4.ip_forward=1 so packets are routed between GRE and LAN
-//   - rp_filter=2 ("loose") rather than 0 on the GRE + physical interfaces,
-//     since asymmetric routing over a tunnel is common but rp_filter=0
-//     disables real spoofing protection entirely
+//   - net.ipv4.ip_forward=1
+//   - rp_filter=2 ("loose") on the GRE interface
 func Enable(c *config.Config) error {
 	if err := sysctlSet("net.ipv4.ip_forward", "1"); err != nil {
 		return err
@@ -70,8 +68,9 @@ func Enable(c *config.Config) error {
 }
 
 // ApplyStaticRoutes pushes configured static routes with the GRE peer as
-// next-hop, and enables policy routing table 100 in case the operator wants
-// to route only specific traffic through the tunnel later.
+// next-hop. Before creating routes, verify that the route to the remote
+// PUBLIC IP remains reachable through the physical/WAN interface to prevent
+// routing loops.
 func ApplyStaticRoutes(c *config.Config) error {
 	for _, r := range c.Routing.StaticRoutes {
 		nextHop := c.RemoteGREAddr()
@@ -93,7 +92,7 @@ func FlushStaticRoutes(c *config.Config) {
 	}
 }
 
-// List returns `ip route` output relevant to the tunnel, used by `nosrat routes`.
+// List returns `ip route` output relevant to the tunnel.
 func List(c *config.Config) (string, error) {
 	out, err := run("ip", "route", "show", "dev", c.TunnelName)
 	if err != nil {
@@ -103,4 +102,9 @@ func List(c *config.Config) (string, error) {
 		return "(no routes on " + c.TunnelName + ")", nil
 	}
 	return out, nil
+}
+
+// RemoveSysctlConfig removes the sysctl configuration file.
+func RemoveSysctlConfig() error {
+	return os.Remove("/etc/sysctl.d/99-nosrat.conf")
 }

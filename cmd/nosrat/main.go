@@ -4,13 +4,10 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -84,7 +81,6 @@ func main() {
 	case "uninstall":
 		err = cmdUninstall(cfg)
 	case "run-daemon":
-		// invoked by systemd; blocks running the health loop in foreground.
 		err = cmdRunDaemon(cfg)
 	default:
 		usage()
@@ -131,18 +127,12 @@ func fatal(err error) {
 // ---- command implementations -------------------------------------------
 
 func cmdInit(cfgPath string) error {
-	if err := os.MkdirAll("/etc/nosrat/secrets", 0700); err != nil {
-		return err
-	}
-	if err := os.Chmod("/etc/nosrat/secrets", 0700); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+	if err := config.EnsureConfigDir(); err != nil {
 		return err
 	}
 
 	if _, err := os.Stat(defaultPSKPath); os.IsNotExist(err) {
-		psk, err := genPSK(32)
+		psk, err := config.GeneratePSK()
 		if err != nil {
 			return fmt.Errorf("generating PSK: %w", err)
 		}
@@ -155,6 +145,7 @@ func cmdInit(cfgPath string) error {
 	}
 
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		starterConfig := config.GetDefaultStarterConfig()
 		if err := os.WriteFile(cfgPath, []byte(starterConfig), 0644); err != nil {
 			return err
 		}
@@ -164,14 +155,6 @@ func cmdInit(cfgPath string) error {
 		fmt.Println("config already exists at", cfgPath, "- leaving it untouched")
 	}
 	return nil
-}
-
-func genPSK(nBytes int) (string, error) {
-	buf := make([]byte, nBytes)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func cmdCreate(c *config.Config) error {
@@ -228,6 +211,7 @@ func cmdStop(c *config.Config) error {
 	if err := gre.Down(c.TunnelName); err != nil {
 		return err
 	}
+	routing.FlushStaticRoutes(c)
 	fmt.Println("tunnel", c.TunnelName, "stopped")
 	return nil
 }
@@ -330,6 +314,8 @@ func cmdUninstall(c *config.Config) error {
 	fmt.Println("removing swanctl config for", c.TunnelName)
 	_ = os.Remove("/etc/swanctl/conf.d/" + c.TunnelName + ".conf")
 	_ = ipsec.Reload(c)
+	fmt.Println("removing sysctl config...")
+	_ = routing.RemoveSysctlConfig()
 	fmt.Println("done. Config and PSK under /etc/nosrat were left in place;")
 	fmt.Println("remove /etc/nosrat manually if you want a fully clean slate.")
 	return nil
